@@ -23,7 +23,9 @@ class MainActivity : AppCompatActivity() {
 		Printer.printer = { output_main.append(it) }
 		val repl = Repl()
 		eval_main.setOnClickListener { _ ->
-			repl.handle(input_main.text.toString(), sl)
+			val txt = input_main.text.toString()
+			Printer.println(txt)
+			repl.handle(txt, sl)
 			input_main.text.clear()
 		}
 	}
