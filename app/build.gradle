@@ -1,14 +1,20 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-android-extensions'
 
 android {
-	compileSdkVersion 23
-	buildToolsVersion "23.0.3"
+	compileSdkVersion 25
+	buildToolsVersion "25.0.2"
 	defaultConfig {
 		applicationId "org.lice.androlice"
 		minSdkVersion 9
-		targetSdkVersion 23
+		targetSdkVersion 25
 		versionCode 1
 		versionName "1.0"
+//		jackOptions {
+//			enabled true
+//			jackInProcess false
+//		}
 	}
 	buildTypes {
 		release {
@@ -16,10 +22,16 @@ android {
 			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
 		}
 	}
+	sourceCompatibility = '1.7'
+	targetCompatibility = '1.7'
 }
 
 dependencies {
-	compile fileTree(dir: 'libs', include: ['*.jar'])
-	compile 'com.android.support:appcompat-v7:23.3.0'
-	compile 'com.github.lice-lang:lice:v2.5.1'
+	compile fileTree(include: ['*.jar'], dir: 'libs')
+	compile 'com.android.support:appcompat-v7:25.3.1'
+	compile "org.jetbrains.kotlin:kotlin-stdlib-jre7:$kotlin_version"
+//	compile 'com.github.lice-lang:lice:v2.5.2'
+}
+repositories {
+	mavenCentral()
 }

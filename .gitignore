@@ -7,3 +7,14 @@
 /build
 /captures
 .externalNativeBuild
+.idea/
+app/app-release.apk
+app/libs/
+app/src/main/res/drawable/
+app/src/main/res/mipmap-hdpi/
+app/src/main/java/org/lice/compiler/
+app/src/main/java/org/lice/core/
+app/src/main/java/org/lice/lang/
+app/src/main/java/org/lice/repl/
+app/src/main/java/org/lice/util/
+app/src/main/java/org/lice/parser/
