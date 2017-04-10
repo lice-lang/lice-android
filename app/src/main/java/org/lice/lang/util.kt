@@ -4,6 +4,9 @@
  * @author ice1000
  * @since 1.0.0
  */
+@file:JvmMultifileClass
+@file:JvmName("Lang")
+
 package org.lice.lang
 
 import org.lice.compiler.model.MetaData

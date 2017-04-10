@@ -19,7 +19,7 @@ class SymbolList
 @JvmOverloads
 constructor(init: Boolean = true) {
 	val functions = mutableMapOf<String, Func>()
-	val variables = mutableMapOf<String, Node>()
+//	val variables = mutableMapOf<String, Node>()
 
 	val rand = Random(System.currentTimeMillis())
 
@@ -35,26 +35,45 @@ constructor(init: Boolean = true) {
 		addStandard()
 	}
 
+	fun defineFunction(name: Symbol, node: Func) =
+			defineFunction(name.name, node)
+
 	fun defineFunction(name: String, node: Func) {
 		functions.put(name, node)
 	}
 
 	fun isFunctionDefined(name: String) = functions.containsKey(name)
 
+	fun isFunctionDefined(name: Symbol) = isFunctionDefined(name.name)
+
 	fun removeFunction(name: String) {
 		functions.remove(name)
 	}
 
-	fun setVariable(name: String, value: Node) {
-		variables[name] = value
-	}
+	fun removeFunction(name: Symbol) =
+			removeFunction(name.name)
 
-	fun removeVariable(name: String) {
-		variables.remove(name)
-	}
+//	fun setVariable(name: Symbol, value: Node) =
+//			setVariable(name.name, value)
 
-	fun getVariable(name: String) =
-			variables[name]
+//	fun setVariable(name: String, value: Node) {
+//		variables[name] = value
+//	}
+
+//	fun removeVariable(name: String) {
+//		variables.remove(name)
+//	}
+
+//	fun removeVariable(name: Symbol) = removeVariable(name.name)
+
+//	fun getVariable(name: String) =
+//			variables[name]
+
+//	fun getVariable(name: Symbol) =
+//			getVariable(name.name)
+
+	fun getFunction(name: Symbol) =
+			getFunction(name.name)
 
 	fun getFunction(name: String) =
 			functions[name]

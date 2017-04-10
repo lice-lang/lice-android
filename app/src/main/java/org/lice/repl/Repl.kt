@@ -1,8 +1,11 @@
 package org.lice.repl
 
 import org.lice.androlice.Printer
-import org.lice.compiler.util.*
-import org.lice.parser.Parser
+import org.lice.compiler.parse.buildNode
+import org.lice.compiler.parse.mapAst
+import org.lice.compiler.util.DEBUGGING
+import org.lice.compiler.util.SymbolList
+import org.lice.compiler.util.VERBOSE
 
 /**
  * starting the read-eval-print-loop machine
@@ -15,7 +18,7 @@ class Repl {
 	var stackTrace: Throwable? = null
 
 	init {
-		Printer.println("""Lice language repl $VERSION_CODE
+		println("""Lice language repl $VERSION_CODE
 			|see: https://github.com/ice1000/org.lice
 
 			|回首向来萧瑟处,也无风雨也无晴。
@@ -23,7 +26,7 @@ class Repl {
 
 			|for help please input: help
 			|""".trimMargin())
-		Printer.print(HINT)
+		print(HINT)
 		DEBUGGING = false
 		VERBOSE = false
 	}
@@ -46,24 +49,24 @@ class Repl {
 				|You have 4 special commands which you cannot use in the language but the repl:
 
 				|exit: exit the repl
-				|pst: print the most recent stack trace
-				|help: print this doc
-				|version: check the version""".trimMargin()
-			)
-			"version" -> """
+                |pst: print the most recent stack trace
+                |help: print this doc
+				|version: check the version""".trimMargin())
+			"version" -> Printer.println("""
 				|Lice language interpreter $VERSION_CODE
-				|by ice1000""".trimMargin()
+				|by ice1000""".trimMargin())
 			else -> try {
-				Parser
-					.defaultParser(str)
-					.mapAst(symbolList)
-					.eval()
+//				Parser
+//					.defaultParser(str)
+//					.mapAst(symbolList)
+//					.eval()
+				mapAst(buildNode(str), symbolList).eval()
 			} catch(e: Throwable) {
 				stackTrace = e
 				Printer.println(e.message ?: "")
 			}
 		}
-		Printer.print("\n$HINT")
+		print("\n$HINT")
 		return true
 	}
 
