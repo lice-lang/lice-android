@@ -18,7 +18,7 @@ class Repl {
 	var stackTrace: Throwable? = null
 
 	init {
-		println("""Lice language repl $VERSION_CODE
+		Printer.println("""Lice language repl $VERSION_CODE
 			|see: https://github.com/ice1000/org.lice
 
 			|回首向来萧瑟处,也无风雨也无晴。
@@ -26,7 +26,7 @@ class Repl {
 
 			|for help please input: help
 			|""".trimMargin())
-		print(HINT)
+		Printer.print(HINT)
 		DEBUGGING = false
 		VERBOSE = false
 	}
@@ -66,7 +66,7 @@ class Repl {
 				Printer.println(e.message ?: "")
 			}
 		}
-		print("\n$HINT")
+		Printer.print("\n$HINT")
 		return true
 	}
 
