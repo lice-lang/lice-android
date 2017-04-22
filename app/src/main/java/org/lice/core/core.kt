@@ -20,11 +20,8 @@ import org.lice.compiler.util.InterpretException.Factory.tooFewArgument
 import org.lice.compiler.util.InterpretException.Factory.typeMisMatch
 import org.lice.compiler.util.forceRun
 import org.lice.lang.*
-import java.awt.Image
-import java.awt.image.RenderedImage
 import java.io.File
 import java.net.URL
-import javax.imageio.ImageIO
 import kotlin.concurrent.thread
 
 @SinceKotlin("1.1")
@@ -307,12 +304,7 @@ inline fun SymbolList.addFileFunctions() {
 		val a = ls.first()
 		val b = ls[1]
 		when (a) {
-			is File -> {
-				when (b) {
-					is Image -> ImageIO.write(b as RenderedImage, "PNG", a)
-					else -> a.writeText(b.toString())
-				}
-			}
+			is File -> a.writeText(b.toString())
 			else -> typeMisMatch("File", a, ln)
 		}
 		a
