@@ -25,5 +25,5 @@ environment:
 build_script: gradlew assembleRelease --info
 
 artifacts:
-  - path: app\build\outputs\apk\app-release-unsigned
+  - path: app\build\outputs\apk\app-release-unsigned.apk
     name: lice-android.jar
