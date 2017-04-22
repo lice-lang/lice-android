@@ -1,11 +1,12 @@
 package org.lice.repl
 
-import org.lice.androlice.Printer
 import org.lice.compiler.parse.buildNode
 import org.lice.compiler.parse.mapAst
 import org.lice.compiler.util.DEBUGGING
-import org.lice.compiler.util.SymbolList
 import org.lice.compiler.util.VERBOSE
+import org.lice.compiler.util.println
+import org.lice.core.SymbolList
+import org.lice.lang.Echoer
 
 /**
  * starting the read-eval-print-loop machine
@@ -14,63 +15,36 @@ import org.lice.compiler.util.VERBOSE
  * @author ice1000
  * @since 1.0.0
  */
-class Repl {
+class Repl
+@JvmOverloads
+constructor(val symbolList: SymbolList = SymbolList(true)) {
 	var stackTrace: Throwable? = null
 
 	init {
-		Printer.println("""Lice language repl $VERSION_CODE
-			|see: https://github.com/ice1000/org.lice
+		"""Lice language repl $VERSION_CODE
+			|see: https://github.com/lice-lang/lice
 
-			|回首向来萧瑟处,也无风雨也无晴。
-			|Stay young stay simple, and make yourself naive.
-
-			|for help please input: help
-			|""".trimMargin())
-		Printer.print(HINT)
+			|剑未佩妥，出门已是江湖。千帆过尽，归来仍是少年。
+			|Stay young stay simple, and make yourself naive."""
+				.trimMargin()
+				.println()
+		Echoer.echo(HINT)
 		DEBUGGING = false
 		VERBOSE = false
 	}
 
-	@JvmOverloads
-	fun handle(
-		str: String,
-		symbolList: SymbolList = SymbolList(true)): Boolean {
-		when (str) {
-			"exit" -> {
-				Printer.println("Have a nice day :)")
-				return false
-			}
-			"pst" ->
-				if (stackTrace != null) stackTrace?.printStackTrace()
-				else Printer.println("No stack trace.")
-			"help" -> Printer.println("""
-				|This is the repl for org.lice language.
-
-				|You have 4 special commands which you cannot use in the language but the repl:
-
-				|exit: exit the repl
-                |pst: print the most recent stack trace
-                |help: print this doc
-				|version: check the version""".trimMargin())
-			"version" -> Printer.println("""
-				|Lice language interpreter $VERSION_CODE
-				|by ice1000""".trimMargin())
-			else -> try {
-//				Parser
-//					.defaultParser(str)
-//					.mapAst(symbolList)
-//					.eval()
-				mapAst(buildNode(str), symbolList).eval()
-			} catch(e: Throwable) {
-				stackTrace = e
-				Printer.println(e.message ?: "")
-			}
+	fun handle(str: String): Boolean {
+		try {
+			mapAst(buildNode(str), symbolList).eval()
+		} catch(e: Throwable) {
+			stackTrace = e
+			Echoer.echolnErr(e.message ?: "")
 		}
-		Printer.print("\n$HINT")
+		print(HINT)
 		return true
 	}
 
-	companion object {
+	companion object HintHolder {
 		val HINT = "Lice > "
 	}
 }

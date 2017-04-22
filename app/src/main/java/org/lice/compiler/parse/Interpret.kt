@@ -10,10 +10,7 @@
 package org.lice.compiler.parse
 
 import org.lice.compiler.model.*
-import org.lice.compiler.model.Value.Objects.Nullptr
-import org.lice.compiler.util.InterpretException
-import org.lice.compiler.util.SymbolList
-import org.lice.compiler.util.forceRun
+import org.lice.core.SymbolList
 import java.io.File
 
 
@@ -25,36 +22,32 @@ import java.io.File
  */
 fun parseValue(
 		str: String,
-		meta: MetaData): Node? {
-	if (str.isEmpty() or str.isBlank())
-		return EmptyNode(meta)
-	else if (str.isString()) return ValueNode(str
+		meta: MetaData): Node? = when {
+	str.isBlank() -> null
+	str.isString() -> ValueNode(str
 			.substring(
 					startIndex = 1,
 					endIndex = str.length - 1
-			), meta)
-	if (str.isOctInt())
-		return ValueNode(str.toOctInt(), meta)
-	if (str.isInt())
-		return ValueNode(str.toInt(), meta)
-	if (str.isHexInt())
-		return ValueNode(str.toHexInt(), meta)
-	if (str.isBinInt())
-		return ValueNode(str.toBinInt(), meta)
-	if (str.isBigInt())
-		return ValueNode(str.toBigInt(), meta)
-	if ("null" == str)
-		return ValueNode(Nullptr, meta)
-	if ("true" == str)
-		return ValueNode(true, meta)
-	if ("false" == str)
-		return ValueNode(false, meta)
-	forceRun {
-		return if (str.length < 0xF)
+			)
+			.replace("\\r", "\r")
+			.replace("\\n", "\n")
+			.replace("\\t", "\t")
+			.replace("\\b", "\b")
+			.replace("\\\\", "\\")
+			.replace("\\\"", "\"")
+			.replace("\\\'", "\'"), meta)
+	str.isOctInt() -> ValueNode(str.toOctInt(), meta)
+	str.isInt() -> ValueNode(str.toInt(), meta)
+	str.isHexInt() -> ValueNode(str.toHexInt(), meta)
+	str.isBinInt() -> ValueNode(str.toBinInt(), meta)
+	str.isBigInt() -> ValueNode(str.toBigInt(), meta)
+	else -> try {
+		if (str.length < 0xF)
 			ValueNode(str.toFloat(), meta)
 		else ValueNode(str.toDouble(), meta)
+	} catch (e: Throwable) {
+		null
 	}
-	return null
 }
 
 /**
@@ -67,40 +60,32 @@ fun parseValue(
 fun mapAst(
 		node: StringNode,
 		symbolList: SymbolList = SymbolList()): Node = when (node) {
-	is StringMiddleNode -> when (node.list[0]) {
-		is StringLeafNode ->
-			ExpressionNode(
-					symbolList = symbolList,
-					function = node.list[0].strRepr,
-					meta = node.meta,
-					params = node
-							.list
-							.subList(
-									fromIndex = 1,
-									toIndex = node.list.size
-							)
-							.map { strNode ->
-								mapAst(
-										node = strNode,
-										symbolList = symbolList
-								)
-							}
-			)
-	// FIXME add lambda support
-		else -> throw InterpretException("Using expression as lambda is not supported yet.", node.meta)
+	is StringMiddleNode -> {
+		val fst = node.list.first()
+		val s = mapAst(fst, symbolList)
+		s as? ValueNode ?: ExpressionNode(
+				node = s,
+				meta = node.meta,
+				params = node.list.drop(1).map { mapAst(it, symbolList) }
+		)
 	}
 	is StringLeafNode ->
-		parseValue(
-				str = node.str,
-				meta = node.meta
-		) ?: SymbolNode(
-				symbolList = symbolList,
-				name = node.str,
-				meta = node.meta
-		)
+		wrapValue(node, symbolList)
 	else -> // empty
 		EmptyNode(node.meta)
 }
+
+fun wrapValue(
+		node: StringLeafNode,
+		symbolList: SymbolList
+): Node = parseValue(
+		str = node.str,
+		meta = node.meta
+) ?: SymbolNode(
+		symbolList = symbolList,
+		name = node.str,
+		meta = node.meta
+)
 
 /**
  * create an executable node
@@ -115,11 +100,7 @@ fun createRootNode(
 ): Node {
 	val code = file.readText()
 	val fp = "FILE_PATH"
-	if (symbolList.functions[fp]?.invoke(MetaData.EmptyMetaData, emptyList()) == null)
-//		symbolList.setVariable(
-//				name = fp,
-//				value = ValueNode(any = file.absolutePath)
-//		)
+	if (symbolList.getFunction(fp)?.invoke(MetaData.EmptyMetaData, emptyList()) == null)
 		symbolList.defineFunction(fp, { _, _ -> ValueNode(any = file.absolutePath) })
 	val stringTreeRoot = buildNode(code)
 	return mapAst(

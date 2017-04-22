@@ -10,7 +10,6 @@
 
 package org.lice.core
 
-import org.lice.androlice.Printer
 import org.lice.compiler.model.*
 import org.lice.compiler.model.Node.Objects.getNullNode
 import org.lice.compiler.model.Value.Objects.Nullptr
@@ -19,153 +18,142 @@ import org.lice.compiler.util.InterpretException
 import org.lice.compiler.util.InterpretException.Factory.numberOfArgumentNotMatch
 import org.lice.compiler.util.InterpretException.Factory.tooFewArgument
 import org.lice.compiler.util.InterpretException.Factory.typeMisMatch
-import org.lice.compiler.util.SymbolList
 import org.lice.compiler.util.forceRun
-import org.lice.lang.DefineResult
-import org.lice.lang.Pair
-import org.lice.lang.Symbol
+import org.lice.lang.*
+import java.awt.Image
+import java.awt.image.RenderedImage
 import java.io.File
 import java.net.URL
+import javax.imageio.ImageIO
 import kotlin.concurrent.thread
 
-inline fun SymbolList.addStandard() {
+@SinceKotlin("1.1")
+typealias ParamList = List<String>
+
+@SinceKotlin("1.1")
+typealias Mapper<T> = (T) -> T
+
+private var lambdaNameCounter = -100
+
+internal fun lambdaNameGen() = "\t${++lambdaNameCounter}"
+
+inline fun Any?.booleanValue() = this as? Boolean ?: (this != null)
+
+fun SymbolList.addStandard() {
 	addGetSetFunction()
 	addControlFlowFunctions()
 	addNumberFunctions()
+	addLiterals()
 	addStringFunctions()
 	addBoolFunctions()
 	addCollectionsFunctions()
 	addListFunctions()
-
-	defineFunction("def", { ln, ls ->
-		if (ls.size < 2) tooFewArgument(2, ls.size, ln)
-		val name = (ls[0] as SymbolNode).name
-		val body = ls.last()
-		val params = ls
-				.subList(1, ls.size - 1)
-				.map {
-					when (it) {
-						is SymbolNode -> it.name
-						else -> typeMisMatch("Symbol", it.eval(), ln)
-					}
-				}
-		val override = isFunctionDefined(name)
+	val defFunc = { name: String, params: ParamList, block: Mapper<Node>, body: Node ->
 		defineFunction(name, { ln, args ->
-//			val backup = params.map { getVariable(it) }
-			val backup = params.map { functions[it]?.invoke(ln, emptyList()) }
+			val backup = params.map { getFunction(it) }
 			if (args.size != params.size)
 				numberOfArgumentNotMatch(params.size, args.size, ln)
 			args
-					.map { node ->
-						node.eval().o ?: Nullptr
-					}
+					.map(block)
 					.forEachIndexed { index, obj ->
-						// setVariable(params[index], ValueNode(obj))
-						defineFunction(params[index], { _, _ -> ValueNode(obj) })
+						when (obj) {
+							is SymbolNode -> defineFunction(params[index], obj.function())
+							else -> defineFunction(params[index], { _, _ -> obj })
+						}
 					}
 			val ret = ValueNode(body.eval().o ?: Nullptr, ln)
 			backup.forEachIndexed { index, node ->
-				if (node != null)
-//					setVariable(params[index], node)
-					defineFunction(params[index], { _, _ -> node })
-				else
-//					removeVariable(params[index])
-					removeFunction(params[index])
+				if (node != null) defineFunction(params[index], node)
+				else removeFunction(params[index])
 			}
 			ret
 		})
-		return@defineFunction ValueNode(DefineResult(
-				"${if (override) "overriding" else "new function defined"}: $name"))
-	})
-	defineFunction("defexpr", { ln, ls ->
-		if (ls.size < 2) tooFewArgument(2, ls.size, ln)
-		val name = (ls[0] as SymbolNode).name
-		val body = ls.last()
-		val params = ls
-				.subList(1, ls.size - 1)
-				.map {
-					when (it) {
-						is SymbolNode -> it.name
-						else -> typeMisMatch("Symbol", it.eval(), ln)
+	}
+	val definer = { funName: String, block: Mapper<Node> ->
+		defineFunction(funName, { meta, ls ->
+			if (ls.size < 2) tooFewArgument(2, ls.size, meta)
+			val name = (ls.first() as SymbolNode).name
+			val body = ls.last()
+			val params = ls
+					.subList(1, ls.size - 1)
+					.map {
+						when (it) {
+							is SymbolNode -> it.name
+							else -> InterpretException.notSymbol(meta)
+						}
 					}
-				}
-		val override = isFunctionDefined(name)
-		defineFunction(name, { ln, args ->
-			//			val backup = params.map { getVariable(it) }
-			val backup = params.map { functions[it]?.invoke(ln, emptyList()) }
-			if (args.size != params.size)
-				numberOfArgumentNotMatch(params.size, args.size, ln)
-			args
-					.map { node -> FExprValueNode({ node.eval().o }) }
-					.forEachIndexed { index, fexpr ->
-						// setVariable(params[index], fexpr)
-						defineFunction(params[index], { _, _ -> fexpr })
-					}
-			val ret = ValueNode(body.eval().o ?: Nullptr, ln)
-			backup.forEachIndexed { index, node ->
-				if (node != null)
-//					setVariable(params[index], node)
-					defineFunction(params[index], { _, _ -> node })
-				else
-//					removeVariable(params[index])
-					removeFunction(params[index])
-			}
-			ret
+			val override = isFunctionDefined(name)
+			defFunc(name, params, block, body)
+			return@defineFunction ValueNode(DefineResult(
+					"${if (override) "overridden" else "defined"}: $name"))
 		})
-		return@defineFunction ValueNode(DefineResult(
-				"${if (override) "overriding" else "new function defined"}: $name"))
-	})
+	}
+	definer("def", { node -> ValueNode(node.eval().o ?: Nullptr) })
+	definer("deflazy", { node -> LazyValueNode({ node.eval() }) })
+	definer("defexpr", { it })
+	val lambdaDefiner = { funName: String, mapper: Mapper<Node> ->
+		defineFunction(funName, { meta, ls ->
+			if (ls.isEmpty()) tooFewArgument(1, ls.size, meta)
+			val body = ls.last()
+			val params = ls
+					.subList(0, ls.size - 1)
+					.map {
+						when (it) {
+							is SymbolNode -> it.name
+							else -> typeMisMatch("Symbol", it.eval(), meta)
+						}
+					}
+			val name = lambdaNameGen()
+			defFunc(name, params, mapper, body)
+			SymbolNode(this, name, meta)
+		})
+	}
+	lambdaDefiner("lambda", { node -> ValueNode(node.eval().o ?: Nullptr) })
+	lambdaDefiner("lazy", { node -> LazyValueNode({ node.eval() }) })
+	lambdaDefiner("expr", { it })
 	defineFunction("def?", { ln, ls ->
-		val a = (ls[0] as SymbolNode).name
+		val a = (ls.first() as? SymbolNode)?.name
 		ValueNode(isFunctionDefined(a), ln)
 	})
 	defineFunction("undef", { ln, ls ->
-		val a = (ls[0] as SymbolNode).name
-		removeFunction(a)
-		getNullNode(ln)
+		val a = (ls.first() as? SymbolNode)?.name
+		ValueNode(null != removeFunction(a), ln)
 	})
 	defineFunction("alias", { meta, ls ->
-		val a = getFunction((ls[0] as SymbolNode).name)
+		val a = getFunction((ls.first() as? SymbolNode)?.name)
 		a?.let { function ->
 			ls.forEachIndexed { index, _ ->
 				if (index != 0)
 					defineFunction((ls[index] as SymbolNode).name, function)
 			}
 		}
-		getNullNode(meta)
+		ValueNode(null != a, meta)
 	})
 
-	defineFunction("eval", { ln, ls ->
-		val value = ls[0].eval()
-		when (value.o) {
-			is String -> ValueNode(mapAst(
-					node = buildNode(value.o),
-					symbolList = this
-			).eval(), ln)
+	provideFunctionWithMeta("eval", { ln, ls ->
+		val value = ls.first()
+		when (value) {
+			is String -> mapAst(buildNode(value), symbolList = this).eval().o
 			else -> typeMisMatch("String", value, ln)
 		}
 	})
-
-	defineFunction("print", { ln, ls ->
-		ls.forEach { Printer.print(it.eval().o) }
-		if (ls.isNotEmpty()) ls.last() else EmptyNode(ln)
+	provideFunction("debug", {
+		BeforeEval.hook = { Echoer.echoln("eval =>> $this") }
+		null
 	})
-	defineFunction("println", { ln, ls ->
-		ls.forEach { Printer.print(it.eval().o) }
-		Printer.print("\n")
-		if (ls.isNotEmpty()) ls.last() else EmptyNode(ln)
+	provideFunction("print", { ls ->
+		ls.forEach { Echoer.echo(it) }
+		if (ls.isNotEmpty()) ls.last() else null
 	})
-
-	defineFunction("new", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is String -> ValueNode(Class.forName(a.o).newInstance(), ln)
-			is Symbol -> ValueNode(Class.forName(a.o.name).newInstance(), ln)
-			else -> typeMisMatch(
-					expected = "String or Symbol",
-					actual = a,
-					meta = ln
-			)
+	provideFunction("print", { ls ->
+		ls.forEach { Echoer.echoErr(it) }
+		if (ls.isNotEmpty()) ls.last() else null
+	})
+	provideFunctionWithMeta("new", { meta, ls ->
+		val a = ls.first()
+		when (a) {
+			is String -> Class.forName(a).newInstance()
+			else -> typeMisMatch("String", a, meta)
 		}
 	})
 	defineFunction("", { _, ls ->
@@ -173,24 +161,15 @@ inline fun SymbolList.addStandard() {
 		ls.forEach {
 			val res = it.eval()
 			ret = res
-			Printer.println("${res.o.toString()} => ${res.type.name}")
+			Echoer.echoln("${res.o.toString()} => ${res.type.name}")
 		}
 		ValueNode(ret)
 	})
-	defineFunction("type", { _, ls ->
-		ls.forEach { Printer.println(it.eval().type.canonicalName) }
-		ls.last()
+	provideFunction("type", { ls ->
+		ls.first()?.javaClass ?: NullptrType::class.java
 	})
-	defineFunction("gc", { ln, _ ->
-		System.gc()
-		getNullNode(ln)
-	})
-
-	defineFunction("|>", { ln, ls ->
-		var ret = Nullptr
-		ls.forEach { ret = it.eval() }
-		ValueNode(ret, ln)
-	})
+	provideFunction("gc", { System.gc() })
+	provideFunction("|>", { it.last() })
 	defineFunction("force|>", { ln, ls ->
 		var ret = Nullptr
 		forceRun { ls.forEach { node -> ret = node.eval() } }
@@ -198,32 +177,19 @@ inline fun SymbolList.addStandard() {
 	})
 	defineFunction("no-run|>", { ln, _ -> getNullNode(ln) })
 
-	defineFunction("load-file", { ln, ls ->
-		val o = ls[0].eval()
-		when (o.o) {
-			is File -> ValueNode(createRootNode(
-					file = o.o,
-					symbolList = this
-			).eval(), ln)
-			is String -> ValueNode(createRootNode(
-					file = File(o.o),
-					symbolList = this
-			).eval(), ln)
-			else -> typeMisMatch(
-					expected = "File",
-					actual = o,
-					meta = ln
-			)
+	provideFunctionWithMeta("load-file", { ln, ls ->
+		val o = ls.first()
+		when (o) {
+			is File -> createRootNode(o, this)
+			is String -> createRootNode(File(o), this)
+			else -> typeMisMatch("File or String", o, ln)
 		}
 	})
 
-	defineFunction("exit", { ln, _ ->
-		System.exit(0)
-		getNullNode(ln)
-	})
+	provideFunction("exit", { System.exit(0) })
 
 	defineFunction("str->sym", { ln, ls ->
-		val a = ls[0].eval()
+		val a = ls.first().eval()
 		when (a.o) {
 			is String -> SymbolNode(this, a.o, ln)
 			else -> typeMisMatch("String", a, ln)
@@ -231,7 +197,7 @@ inline fun SymbolList.addStandard() {
 	})
 
 	defineFunction("sym->str", { ln, ls ->
-		val a = ls[0]
+		val a = ls.first()
 		when (a) {
 			is SymbolNode -> ValueNode(a.name, ln)
 			else -> typeMisMatch("Symbol", a, ln)
@@ -243,26 +209,25 @@ inline fun SymbolList.addGetSetFunction() {
 	defineFunction("->", { ln, ls ->
 		if (ls.size < 2)
 			tooFewArgument(2, ls.size, ln)
-		val str = (ls[0] as SymbolNode).name
-		val res = ValueNode(ls[1].eval(), ln)
-//		setVariable(str, res)
+		val str = (ls.first() as SymbolNode).name
+		val v = ls[1]
+		val res = when (v) {
+			is SymbolNode -> v
+			else -> ValueNode(v.eval().o ?: Nullptr, ln)
+		}
 		defineFunction(str, { _, _ -> res })
 		res
 	})
 	defineFunction("<->", { ln, ls ->
 		if (ls.size < 2)
 			tooFewArgument(2, ls.size, ln)
-		val str = (ls[0] as SymbolNode).name
-		if (functions[str]?.invoke(ln, emptyList()) == null) {
+		val str = (ls.first() as SymbolNode).name
+		if (!isFunctionDefined(str)) {
 			val node = ValueNode(ls[1].eval(), ln)
-//			setVariable(
-//					name = str,
-//					value = node
-//			)
 			defineFunction(str, { _, _ -> node })
 			return@defineFunction node
 		}
-		functions[str]?.invoke(ln, emptyList()) ?: getNullNode(ln)
+		getFunction(str)?.invoke(ln, emptyList()) ?: getNullNode(ln)
 	})
 }
 
@@ -270,274 +235,212 @@ inline fun SymbolList.addControlFlowFunctions() {
 	defineFunction("if", { ln, ls ->
 		if (ls.size < 2)
 			tooFewArgument(2, ls.size, ln)
-		val a = ls[0].eval().o
-		val condition = a as? Boolean ?: (a != null)
-		val ret = when {
-			condition -> ls[1].eval().o
-			ls.size >= 3 -> ls[2].eval().o
-			else -> null
-		}
+		val a = ls.first().eval().o
+		val condition = a.booleanValue()
 		when {
-			ret != null -> ValueNode(ret, ln)
+			condition -> ls[1]
+			ls.size >= 3 -> ls[2]
 			else -> getNullNode(ln)
 		}
 	})
 	defineFunction("when", { ln, ls ->
 		for (i in (0..ls.size - 2) step 2) {
 			val a = ls[i].eval().o
-			val condition = a as? Boolean ?: (a != null)
-			val ret = when {
-				condition -> ls[i + 1].eval().o
-				else -> null
-			}
-			if (ret != null) return@defineFunction ValueNode(ret, ln)
+			val condition = a.booleanValue()
+			if (condition) return@defineFunction ls[i + 1]
 		}
 		if (ls.size % 2 == 0) getNullNode(ln)
-		else ValueNode(ls.last().eval())
+		else ls.last()
 	})
 	defineFunction("while", { ln, ls ->
 		if (ls.size < 2)
 			tooFewArgument(2, ls.size, ln)
-		var a = ls[0].eval().o
-		var ret: Any? = null
-		while (a as? Boolean ?: (a != null)) {
+		var a = ls.first().eval().o
+		var ret: Node = EmptyNode(ln)
+		while (a.booleanValue()) {
 			// execute loop
-			ret = ls[1].eval().o
+			ret.eval()
+			ret = ls[1]
 			// update a
-			a = ls[0].eval().o
+			a = ls.first().eval().o
 		}
-		when {
-			ret != null -> ValueNode(ret, ln)
-			else -> getNullNode(ln)
-		}
+		ret
 	})
 }
 
 inline fun SymbolList.addConcurrentFunctions() {
 	defineFunction("thread|>", { ln, ls ->
-		var ret: Node = getNullNode(ln)
-		thread { ls.forEach { node -> ret = ValueNode(node.eval()) } }
-		ret
+		var ret: Any? = null
+		thread { ls.forEach { node -> ret = node.eval().o } }
+		ValueNode(ret, ret?.javaClass ?: Any::class.java, ln)
 	})
-	defineFunction("sleep", { ln, ls ->
-		val a = ls[0].eval()
-		when {
-			a.o is Number -> Thread.sleep(a.o.toLong())
+	provideFunctionWithMeta("sleep", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is Number -> Thread.sleep(a.toLong())
 			else -> typeMisMatch("Number", a, ln)
 		}
-		getNullNode(ln)
+		a
 	})
 }
 
 inline fun SymbolList.addFileFunctions() {
-	defineFunction("file", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is String -> ValueNode(File(a.o)
-					.apply { if (!exists()) createNewFile() }, ln)
-			else -> typeMisMatch("String", a, ln)
-		}
-	})
-	defineFunction("directory", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is String -> ValueNode(File(a.o)
-					.apply { if (!exists()) mkdirs() }, ln)
-			else -> typeMisMatch("String", a, ln)
-		}
-	})
-	defineFunction("file-exists?", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is String -> ValueNode(File(a.o).exists(), ln)
-			else -> typeMisMatch("String", a, ln)
-		}
-	})
-	defineFunction("read-file", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is File -> ValueNode(a.o.readText(), ln)
+	provideFunction("file", { File(it.first().toString()).apply { if (!exists()) createNewFile() } })
+	provideFunction("url", { URL(it.first().toString()) })
+	provideFunction("dir", { File(it.first().toString()).apply { if (!exists()) mkdirs() } })
+	provideFunction("file-exist?", { File(it.first().toString()).exists() })
+	provideFunctionWithMeta("read-file", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is File -> a.readText()
 			else -> typeMisMatch("File", a, ln)
 		}
 	})
-	defineFunction("url", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is String -> ValueNode(URL(a.o), ln)
-			else -> typeMisMatch("String", a, ln)
-		}
-	})
-	defineFunction("read-url", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is URL -> ValueNode(a.o.readText(), ln)
+	provideFunctionWithMeta("read-url", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is URL -> a.readText()
 			else -> typeMisMatch("URL", a, ln)
 		}
 	})
-	defineFunction("write-file", { ln, ls ->
-		val a = ls[0].eval()
-		val b = ls[1].eval()
-		when (a.o) {
+	provideFunctionWithMeta("write-file", { ln, ls ->
+		val a = ls.first()
+		val b = ls[1]
+		when (a) {
 			is File -> {
-				a.o.writeText(b.o.toString())
+				when (b) {
+					is Image -> ImageIO.write(b as RenderedImage, "PNG", a)
+					else -> a.writeText(b.toString())
+				}
 			}
 			else -> typeMisMatch("File", a, ln)
 		}
-		ValueNode(a.o, ln)
+		a
 	})
 }
 
 inline fun SymbolList.addMathFunctions() {
-	defineFunction("sqrt", { ln, ls ->
-		ValueNode(Math.sqrt((ls[0].eval().o as Number).toDouble()), ln)
-	})
-	defineFunction("cbrt", { ln, ls ->
-		ValueNode(Math.cbrt((ls[0].eval().o as Number).toDouble()), ln)
-	})
-	defineFunction("sin", { ln, ls ->
-		ValueNode(Math.sin((ls[0].eval().o as Number).toDouble()), ln)
-	})
-	defineFunction("sinh", { ln, ls ->
-		ValueNode(Math.sinh((ls[0].eval().o as Number).toDouble()), ln)
-	})
-	defineFunction("cosh", { ln, ls ->
-		ValueNode(Math.cosh((ls[0].eval().o as Number).toDouble()), ln)
-	})
-	defineFunction("rand", { ln, ls ->
-		if (ls.isNotEmpty()) ValueNode(rand.nextInt(ls[0].eval().o as Int), ln)
-		else ValueNode(rand.nextInt(), ln)
+	provideFunction("sqrt", { Math.sqrt((it.first() as Number).toDouble()) })
+	provideFunction("cbrt", { Math.cbrt((it.first() as Number).toDouble()) })
+	provideFunction("sin", { Math.sin((it.first() as Number).toDouble()) })
+	provideFunction("sinh", { Math.sinh((it.first() as Number).toDouble()) })
+	provideFunction("cosh", { Math.cosh((it.first() as Number).toDouble()) })
+	provideFunction("rand", {
+		if (it.isNotEmpty()) rand.nextInt(it.first() as Int)
+		else rand.nextInt()
 	})
 }
 
-
 inline fun SymbolList.addStringFunctions() {
-	defineFunction("->str", { ln, ls -> ValueNode(ls[0].eval().o.toString(), ln) })
-	defineFunction("str->int", { ln, ls ->
-		val res = ls[0].eval()
-		when (res.o) {
-			is String -> ValueNode(when {
-				res.o.isOctInt() -> res.o.toOctInt()
-				res.o.isInt() -> res.o.toInt()
-				res.o.isBinInt() -> res.o.toBinInt()
-				res.o.isHexInt() -> res.o.toHexInt()
-				else -> throw InterpretException("give string: \"${res.o}\" cannot be parsed as a number!", ln)
-			}, ln)
+	provideFunction("->str", { it.first().toString() })
+	provideFunctionWithMeta("str->int", { ln, ls ->
+		val res = ls.first()
+		when (res) {
+			is String -> when {
+				res.isOctInt() -> res.toOctInt()
+				res.isInt() -> res.toInt()
+				res.isBinInt() -> res.toBinInt()
+				res.isHexInt() -> res.toHexInt()
+				else -> throw InterpretException("give string: \"$res\" cannot be parsed as a number!", ln)
+			}
 			else -> typeMisMatch("String", res, ln)
 		}
 	})
-	defineFunction("int->hex", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is Int -> ValueNode("0x${Integer.toHexString(a.o)}", ln)
+	provideFunctionWithMeta("int->hex", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is Int -> "0x${Integer.toHexString(a)}"
 			else -> typeMisMatch("Int", a, ln)
 		}
 	})
-	defineFunction("int->bin", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is Int -> ValueNode("0b${Integer.toBinaryString(a.o)}", ln)
+	provideFunctionWithMeta("int->bin", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is Int -> "0b${Integer.toBinaryString(a)}"
 			else -> typeMisMatch("Int", a, ln)
 		}
 	})
-	defineFunction("int->oct", { ln, ls ->
-		val a = ls[0].eval()
-		when (a.o) {
-			is Int -> ValueNode("0${Integer.toOctalString(a.o)}", ln)
+	provideFunctionWithMeta("int->oct", { ln, ls ->
+		val a = ls.first()
+		when (a) {
+			is Int -> "0${Integer.toOctalString(a)}"
 			else -> typeMisMatch("Int", a, ln)
 		}
 	})
-	defineFunction("str-con", { ln, ls ->
-		ValueNode(ls.fold(StringBuilder(ls.size)) { sb, value ->
-			sb.append(value.eval().o.toString())
-		}.toString(), ln)
+	provideFunction("str-con", {
+		it.fold(StringBuilder(it.size)) { sb, value -> sb.append(value.toString()) }.toString()
 	})
-	defineFunction("format", { ln, ls ->
+	provideFunctionWithMeta("format", { ln, ls ->
 		if (ls.isEmpty()) InterpretException.tooFewArgument(1, ls.size, ln)
-		val format = ls[0].eval()
-		when (format.o) {
-			is String -> ValueNode(kotlin.String.format(format.o, *ls
-					.subList(1, ls.size)
-					.map { it.eval().o }
-					.toTypedArray()
-			), ln)
+		val format = ls.first()
+		when (format) {
+			is String -> String.format(format, *ls.toTypedArray())
 			else -> typeMisMatch("String", format, ln)
 		}
 	})
-	defineFunction("->chars", { ln, ls ->
-		ValueNode(ls.fold(StringBuilder(ls.size)) { sb, value ->
-			sb.append(value.eval().o.toString())
-		}
-				.toString()
-				.toCharArray()
-				.toList(), ln)
+	provideFunction("->chars", {
+		it.fold(StringBuilder(it.size)) { sb, value ->
+			sb.append(value.toString())
+		}.toString().toCharArray().toList()
 	})
-	defineFunction("split", { ln, ls ->
-		val str = ls[0].eval()
-		val regex = ls[1].eval()
-		ValueNode(str
-				.o
-				.toString()
-				.split(regex.o.toString())
-				.toList(), ln)
+	provideFunction("split", { ls ->
+		val str = ls.first()
+		val regex = ls[1]
+		str.toString().split(regex.toString()).toList()
 	})
 }
 
 inline fun SymbolList.addListFunctions() {
-	defineFunction("[|]", { ln, ls ->
-		ValueNode(ls.foldRight(null) { value, pairs: Any? ->
-			Pair(value.eval().o, pairs)
-		}, Pair::class.java, ln)
-	})
-	defineFunction("head", { ln, ls ->
-		val a = ls[0].eval()
-		if (a.o is Pair<*, *>) when (a.o.first) {
-			null -> EmptyNode(ln)
-			else -> ValueNode(a.o.first, ln)
+	provideFunction("[|]", { ls ->
+		ls.reduceRight { value, pairs: Any? ->
+			Pair(value, pairs)
 		}
-		else typeMisMatch("Pair", a, ln)
 	})
-	defineFunction("tail", { ln, ls ->
-		val a = ls[0].eval()
-		if (a.o is Pair<*, *>) when (a.o.second) {
-			null -> EmptyNode(ln)
-			else -> ValueNode(a.o.second, ln)
+	provideFunction("[|", { ls ->
+		val a = ls.first()
+		when (a) {
+			is Pair<*, *> -> a.first
+			is Collection<*> -> a.first()
+			else -> null
 		}
-		else typeMisMatch("Pair", a, ln)
+	})
+	provideFunction("|]", { ls ->
+		val a = ls.first()
+		when (a) {
+			is Pair<*, *> -> a.second
+			is Iterable<*> -> a.drop(1)
+			else -> null
+		}
 	})
 }
 
 inline fun SymbolList.addCollectionsFunctions() {
-	defineFunction("..", { ln, ls ->
-		if (ls.size < 2)
-			tooFewArgument(2, ls.size, ln)
-		val a = ls[0].eval()
-		val b = ls[1].eval()
-		return@defineFunction when {
-			a.o is Number && b.o is Number -> {
-				val begin = a.o.toInt()
-				val end = b.o.toInt()
-				val progression = when {
-					begin <= end -> begin..end
-					else -> (begin..end).reversed()
+	provideFunctionWithMeta("..", { ln, ls ->
+		if (ls.size < 2) tooFewArgument(2, ls.size, ln)
+		val a = ls.first()
+		val b = ls[1]
+		return@provideFunctionWithMeta when {
+			a is Number && b is Number -> {
+				val begin = a.toInt()
+				val end = b.toInt()
+				when {
+					begin <= end -> (begin..end).toList()
+					else -> (end..begin).reversed().toList()
 				}
-				ValueNode(progression.toList(), ln)
 			}
-			else -> typeMisMatch("Number", if (a.o is Number) a else b, ln)
+			else -> typeMisMatch("Number", a as? Number ?: b, ln)
 		}
 	})
-	defineFunction("list", { ln, ls ->
-		ValueNode(ls.map { it.eval().o }, ln)
-	})
+	provideFunction("list", { it })
 	defineFunction("for-each", { ln, ls ->
 		if (ls.size < 3)
 			tooFewArgument(3, ls.size, ln)
-		val i = (ls[0] as SymbolNode).name
+		val i = (ls.first() as SymbolNode).name
 		val a = ls[1].eval()
 		when (a.o) {
 			is Collection<*> -> {
 				var ret: Any? = null
 				a.o.forEach {
-					// setVariable(i, ValueNode(it ?: Nullptr, ln))
 					defineFunction(i, { _, _ -> ValueNode(it ?: Nullptr, ln) })
 					ret = ls[2].eval().o
 				}
@@ -546,37 +449,29 @@ inline fun SymbolList.addCollectionsFunctions() {
 			else -> typeMisMatch("List", a, ln)
 		}
 	})
-	defineFunction("size", { ln, ls ->
-		val i = ls[0].eval()
-		when (i.o) {
-			is Collection<*> -> ValueNode(i.o.size, ln)
-			else -> ValueNode(ls.size, ln)
+	provideFunction("size", {
+		val i = it.first()
+		when (i) {
+			is Collection<*> -> i.size
+			is Iterable<*> -> i.count()
+			else -> -1
 		}
 	})
-	defineFunction("reverse", { ln, ls ->
-		val i = ls[0].eval()
-		when (i.o) {
-			is Collection<*> -> ValueNode(i.o.reversed(), ln)
-			else -> ValueNode(ls.size, ln)
+	provideFunction("reverse", { ls ->
+		val i = ls.first()
+		when (i) {
+			is Collection<*> -> i.reversed()
+			is Iterable<*> -> i.reversed()
+			else -> emptyList()
 		}
 	})
-	defineFunction("count", { ln, ls ->
-		val i = ls[0].eval()
-		val e = ls[1].eval()
-		when (i.o) {
-			is Collection<*> -> ValueNode(i.o.count { e.o == it }, ln)
-			else -> ValueNode(0, ln)
-		}
-	})
-	defineFunction("empty?", { ln, ls ->
-		ValueNode((ls[0].eval().o as? Collection<*>)?.isEmpty() ?: true, ln)
-	})
-	defineFunction("in?", { ln, ls ->
-		val i = ls[0].eval()
-		val e = ls[1].eval()
-		when (i.o) {
-			is Collection<*> -> ValueNode(e.o in i.o, ln)
-			else -> ValueNode(false, ln)
+	provideFunction("count", { ls ->
+		val i = ls.first()
+		val e = ls[1]
+		when (i) {
+			is Collection<*> -> i.count { it == e }
+			is Iterable<*> -> i.count { it == e }
+			else -> -1
 		}
 	})
 }

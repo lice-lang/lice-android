@@ -10,9 +10,10 @@
 
 package org.lice.compiler.util
 
-import org.lice.androlice.Printer
+import org.lice.compiler.model.EmptyNode
 import org.lice.compiler.model.MetaData
 import org.lice.compiler.model.Value
+import org.lice.lang.Echoer
 
 class ParseException(string: String) : RuntimeException(string) {
 	companion object Factory {
@@ -32,11 +33,14 @@ class InterpretException(string: String) : RuntimeException(string) {
 	constructor(string: String, meta: MetaData) : this("$string\nat line: ${meta.lineNumber}")
 
 	companion object Factory {
+		fun notSymbol(meta: MetaData): Nothing=
+				throw InterpretException("type mismatch: symbol expected.", meta)
+
 		fun typeMisMatch(expected: String, actual: Value, meta: MetaData): Nothing =
 				throw InterpretException("type mismatch: expected: $expected, found: ${actual.type.name}", meta)
 
-		fun typeMisMatch(expected: String, actual: Any, meta: MetaData): Nothing =
-				throw InterpretException("type mismatch: expected: $expected, found: ${actual.javaClass.name}", meta)
+		fun typeMisMatch(expected: String, actual: Any?, meta: MetaData): Nothing =
+				throw InterpretException("type mismatch: expected: $expected, found: ${(actual?:EmptyNode(meta)).javaClass.name}", meta)
 
 		fun tooFewArgument(expected: Int, actual: Int, meta: MetaData): Nothing {
 			throw InterpretException("expected $expected or more arguments, found: $actual", meta)
@@ -51,5 +55,6 @@ class InterpretException(string: String) : RuntimeException(string) {
 fun showError(string: String, exit: Boolean = false) {
 	if (exit)
 		throw RuntimeException(string)
-	else Printer.print(string)
+	else
+		Echoer.echolnErr(string)
 }
