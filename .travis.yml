@@ -5,7 +5,6 @@ language: android
 jdk:
 - oraclejdk8
 script:
-- "./gradlew check"
 - "./gradlew build"
 before_install:
 - chmod a+x gradlew
