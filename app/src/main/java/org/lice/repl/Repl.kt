@@ -39,6 +39,6 @@ constructor(val symbolList: SymbolList = SymbolList(true)) {
 	}
 
 	companion object HintHolder {
-		val HINT = "|> "
+		const val HINT = "|> "
 	}
 }

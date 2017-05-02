@@ -10,7 +10,7 @@ android {
 		minSdkVersion 9
 		targetSdkVersion 25
 		versionCode 2
-		versionName "1.1"
+		versionName "1.2"
 //		jackOptions {
 //			enabled true
 //			jackInProcess false
@@ -30,7 +30,7 @@ dependencies {
 	compile fileTree(include: ['*.jar'], dir: 'libs')
 	compile 'com.android.support:appcompat-v7:25.3.1'
 	compile "org.jetbrains.kotlin:kotlin-stdlib-jre7:$kotlin_version"
-//	compile 'com.github.lice-lang:lice:v2.5.2'
+//	compile 'com.github.lice-lang:lice:v3.1.1'
 }
 repositories {
 	mavenCentral()
