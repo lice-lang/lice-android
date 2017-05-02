@@ -3,6 +3,7 @@ package org.lice.androlice
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
 import android.view.Menu
+import android.view.MenuItem
 import kotlinx.android.synthetic.main.activity_main.*
 import org.lice.core.*
 import org.lice.lang.Echoer
@@ -42,6 +43,11 @@ class MainActivity : AppCompatActivity() {
 				add(0, 0, index++, it.key)
 			}
 		}
-		return super.onCreateOptionsMenu(menu)
+		return true
+	}
+
+	override fun onOptionsItemSelected(item: MenuItem?): Boolean {
+		input_main.text.append(item?.title ?: "")
+		return null != item
 	}
 }
