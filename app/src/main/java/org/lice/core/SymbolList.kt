@@ -6,6 +6,7 @@
  */
 package org.lice.core
 
+import org.lice.Lice
 import org.lice.compiler.model.EmptyNode
 import org.lice.compiler.model.MetaData
 import org.lice.compiler.model.Node
@@ -38,12 +39,50 @@ constructor(init: Boolean = true) {
 
 	init {
 		if (init) {
-//			initialize()
-//			loadLibrary()
+			initialize()
+			loadLibrary()
 		}
 	}
 
 	fun initialize() {
+		addFileFunctions()
+		addMathFunctions()
+		addStringFunctions()
+		addConcurrentFunctions()
+		addStandard()
+		provideFunction("load", { param ->
+			(param.firstOrNull() as? String)?.let { loadLibrary(it) }
+			true
+		})
+	}
+
+	@JvmOverloads
+	fun loadLibrary(cp: String = """
+(def println str (print str "\n"))
+
+(def println-err str (print-err str "\n"))
+
+(def ! a (if a false true))
+(def null? a (=== null a))
+(def !null a (! (null? a)))
+
+(def empty? a (> (size a) 0))
+(def !empty? a (! (empty? a)))
+
+(def in? ls a (> (count ls a) 0))
+(def !in? ls a (! (in? ls a)))
+(alias in? contains?)
+(alias !in? !contains?)
+
+(deflazy unless condition a b (if condition b a))
+
+(deflazy until condition a (while (! condition) a))
+
+"""): Boolean {
+//		if (cp in loadedModules) return false
+//		loadedModules.add(cp)
+		Lice.run(cp, this@SymbolList)
+		return true
 	}
 
 	fun provideFunctionWithMeta(name: String, node: ProvidedFuncWithMeta) =
