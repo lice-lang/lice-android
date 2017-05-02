@@ -34,7 +34,7 @@ constructor(val symbolList: SymbolList = SymbolList(true)) {
 //			stackTrace = e
 			Echoer.echolnErr(e.message ?: "")
 		}
-		print(HINT)
+		Echoer.echo(HINT)
 		return true
 	}
 
