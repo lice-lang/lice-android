@@ -13,4 +13,4 @@ Android client for Lice language.
 
 ## Screen-shots
 
-![](./art/ss.png)
+![](./art/ss2.png) ![](./art/ss3.png)
